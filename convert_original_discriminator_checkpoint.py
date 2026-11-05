@@ -1,6 +1,8 @@
 """Convert VITS discriminator checkpoint and add it to an already converted VITS checkpoint."""
 
 import argparse
+import os
+
 import torch
 
 from transformers.models.vits.modeling_vits import VitsModel
@@ -23,6 +25,35 @@ TOP_LEVEL_KEYS = []
 IGNORE_KEYS = []
 
 
+def fix_weight_norm_loading(generator, generator_checkpoint_path):
+    """
+    With some torch/transformers versions, the weight-norm weights (flow + posterior encoder)
+    are NOT loaded by from_pretrained: the file uses the names weight_g / weight_v while the
+    model expects parametrizations.weight.original0 / original1. Those layers then stay random.
+    This function reloads them under the right names.
+    """
+    if not any("parametrizations" in k for k in generator.state_dict()):
+        return  # model uses the old weight_norm naming, nothing to fix
+
+    from safetensors.torch import load_file
+
+    if os.path.isdir(generator_checkpoint_path):
+        st_file = os.path.join(generator_checkpoint_path, "model.safetensors")
+    else:
+        st_file = hf_hub_download(repo_id=generator_checkpoint_path, filename="model.safetensors")
+
+    fixed = {}
+    for k, v in load_file(st_file).items():
+        k = k.replace("weight_g", "parametrizations.weight.original0")
+        k = k.replace("weight_v", "parametrizations.weight.original1")
+        fixed[k] = v
+
+    res = generator.load_state_dict(fixed, strict=False)
+    print("weight-norm fix -> missing:", len(res.missing_keys), "unexpected:", len(res.unexpected_keys))
+    if res.missing_keys:
+        raise RuntimeError(f"generator weights still missing: {res.missing_keys[:5]}")
+
+
 @torch.no_grad()
 def convert_checkpoint(
     language_code,
@@ -37,9 +68,10 @@ def convert_checkpoint(
     if language_code is not None:
         checkpoint_path = hf_hub_download(repo_id="facebook/mms-tts", subfolder=f"full_models/{language_code}", filename="D_100000.pth")
         generator_checkpoint_path = f"facebook/mms-tts-{language_code}"
-    
+
     config = VitsConfig.from_pretrained(generator_checkpoint_path)
     generator = VitsModel.from_pretrained(generator_checkpoint_path)
+    fix_weight_norm_loading(generator, generator_checkpoint_path)
 
     discriminator = VitsDiscriminator(config)
 
@@ -102,24 +134,29 @@ def convert_checkpoint(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    
-    parser.add_argument("--language_code", default=None, type=str, help="""If set, indicates the language code of the MMS checkpoint to convert. 
-                        In that case, it will automatically creates the right MMS checkpoint in the HF required format.
-                        If used, `checkpoint_path` and `generator_checkpoint_path` are ignored.""")
-    
+
+    parser.add_argument(
+        "--language_code",
+        default=None,
+        type=str,
+        help="If set, indicates the language code of the MMS checkpoint to convert. "
+        "In that case, it will automatically create the right MMS checkpoint in the HF required format. "
+        "If used, `checkpoint_path` and `generator_checkpoint_path` are ignored.",
+    )
+
     parser.add_argument(
         "--checkpoint_path", default=None, type=str, help="Local path to original discriminator checkpoint. Ignored if `language_code` is used."
     )
     parser.add_argument(
-        "--generator_checkpoint_path", default=None, type=str, help="Path to the 🤗 generator (VitsModel). Ignored if `language_code` is used."
+        "--generator_checkpoint_path", default=None, type=str, help="Path to the HF generator (VitsModel). Ignored if `language_code` is used."
     )
     parser.add_argument(
         "--pytorch_dump_folder_path", required=True, default=None, type=str, help="Path to the output PyTorch model."
     )
     parser.add_argument(
-        "--push_to_hub", default=None, type=str, help="Where to upload the converted model on the 🤗 hub."
+        "--push_to_hub", default=None, type=str, help="Where to upload the converted model on the HF hub."
     )
-    
+
     args = parser.parse_args()
     convert_checkpoint(
         args.language_code,

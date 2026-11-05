@@ -1541,7 +1541,7 @@ class VitsTextEncoder(nn.Module):
     def __init__(self, config: VitsConfig):
         super().__init__()
         self.config = config
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, config.pad_token_id)
+        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, getattr(config, "pad_token_id", None))
         self.encoder = VitsEncoder(config)
         self.project = nn.Conv1d(config.hidden_size, config.flow_size * 2, kernel_size=1)
 

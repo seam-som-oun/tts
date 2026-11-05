@@ -1096,7 +1096,7 @@ def main():
                     attention_mask=batch["attention_mask"],
                     labels=batch["labels"],
                     labels_attention_mask=batch["labels_attention_mask"],
-                    speaker_id=batch["speaker_id"],
+                    speaker_id=batch.get("speaker_id", None),
                     return_dict=True,
                     monotonic_alignment_function=maximum_path,
                 )
@@ -1285,7 +1285,7 @@ def main():
                             attention_mask=batch["attention_mask"],
                             labels=batch["labels"],
                             labels_attention_mask=batch["labels_attention_mask"],
-                            speaker_id=batch["speaker_id"],
+                            speaker_id=batch.get("speaker_id", None),
                             return_dict=True,
                             monotonic_alignment_function=maximum_path,
                         )
@@ -1387,7 +1387,7 @@ def main():
                         attention_mask=batch["attention_mask"],
                         labels=batch["labels"],
                         labels_attention_mask=batch["labels_attention_mask"],
-                        speaker_id=batch["speaker_id"],
+                        speaker_id=batch.get("speaker_id", None),
                         return_dict=True,
                         monotonic_alignment_function=maximum_path,
                     )
